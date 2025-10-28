@@ -8,6 +8,7 @@
 #include <lvgl.h>
 #endif
 
+#include <array>
 #include <esp_timer.h>
 #include <esp_log.h>
 #include <esp_pm.h>
@@ -39,6 +40,9 @@ public:
     virtual Theme* GetTheme() { return current_theme_; }
     virtual void UpdateStatusBar(bool update_all = false);
     virtual void SetPowerSaveMode(bool on);
+    virtual void ShowAudioPlayer(const std::string& title);
+    virtual void UpdateAudioSpectrum(const std::array<uint8_t, 8>& bars);
+    virtual void HideAudioPlayer();
 
     inline int width() const { return width_; }
     inline int height() const { return height_; }

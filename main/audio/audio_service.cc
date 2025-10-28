@@ -280,6 +280,10 @@ void AudioService::AudioOutputTask() {
         last_output_time_ = std::chrono::steady_clock::now();
         debug_statistics_.playback_count++;
 
+        if (callbacks_.on_playback_frame) {
+            callbacks_.on_playback_frame(task->pcm);
+        }
+
 #if CONFIG_USE_SERVER_AEC
         /* Record the timestamp for server AEC */
         if (task->timestamp > 0) {

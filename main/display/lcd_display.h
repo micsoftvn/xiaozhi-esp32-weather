@@ -8,8 +8,10 @@
 #include <esp_lcd_panel_ops.h>
 #include <font_emoji.h>
 
+#include <array>
 #include <atomic>
 #include <memory>
+#include <chrono>
 
 #define PREVIEW_IMAGE_DURATION_MS 5000
 
@@ -32,6 +34,11 @@ protected:
     lv_obj_t* chat_message_label_ = nullptr;
     esp_timer_handle_t preview_timer_ = nullptr;
     std::unique_ptr<LvglImage> preview_image_cached_ = nullptr;
+    lv_obj_t* audio_panel_ = nullptr;
+    lv_obj_t* audio_title_label_ = nullptr;
+    std::array<lv_obj_t*, 8> audio_bars_{};
+    lv_obj_t* audio_stop_button_ = nullptr;
+    std::chrono::steady_clock::time_point last_spectrum_update_{};
 
     void InitializeLcdThemes();
     void SetupUI();
@@ -47,6 +54,9 @@ public:
     virtual void SetEmotion(const char* emotion) override;
     virtual void SetChatMessage(const char* role, const char* content) override; 
     virtual void SetPreviewImage(std::unique_ptr<LvglImage> image) override;
+    virtual void ShowAudioPlayer(const std::string& title) override;
+    virtual void UpdateAudioSpectrum(const std::array<uint8_t, 8>& bars) override;
+    virtual void HideAudioPlayer() override;
 
     // Add theme switching function
     virtual void SetTheme(Theme* theme) override;

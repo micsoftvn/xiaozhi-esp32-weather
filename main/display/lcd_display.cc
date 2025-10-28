@@ -14,6 +14,7 @@
 #include <cstring>
 
 #include "board.h"
+#include "application.h"
 
 #define TAG "LcdDisplay"
 
@@ -453,9 +454,65 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_style_radius(low_battery_popup_, lvgl_theme->spacing(4), 0);
     low_battery_label_ = lv_label_create(low_battery_popup_);
     lv_label_set_text(low_battery_label_, Lang::Strings::BATTERY_NEED_CHARGE);
-    lv_obj_set_style_text_color(low_battery_label_, lv_color_white(), 0);
+   lv_obj_set_style_text_color(low_battery_label_, lv_color_white(), 0);
     lv_obj_center(low_battery_label_);
     lv_obj_add_flag(low_battery_popup_, LV_OBJ_FLAG_HIDDEN);
+
+    audio_panel_ = lv_obj_create(screen);
+    lv_obj_set_scrollbar_mode(audio_panel_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_size(audio_panel_, LV_HOR_RES * 0.9, lvgl_theme->spacing(20));
+    lv_obj_align(audio_panel_, LV_ALIGN_BOTTOM_MID, 0, -lvgl_theme->spacing(18));
+    lv_obj_set_style_bg_color(audio_panel_, lvgl_theme->chat_background_color(), 0);
+    lv_obj_set_style_radius(audio_panel_, lvgl_theme->spacing(3), 0);
+    lv_obj_set_style_border_width(audio_panel_, 0, 0);
+    lv_obj_set_style_pad_all(audio_panel_, lvgl_theme->spacing(3), 0);
+    lv_obj_set_flex_flow(audio_panel_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(audio_panel_, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
+    lv_obj_add_flag(audio_panel_, LV_OBJ_FLAG_HIDDEN);
+
+    audio_title_label_ = lv_label_create(audio_panel_);
+    lv_label_set_text(audio_title_label_, "");
+    lv_label_set_long_mode(audio_title_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_style_text_color(audio_title_label_, lvgl_theme->text_color(), 0);
+    lv_obj_set_style_text_font(audio_title_label_, lvgl_theme->text_font()->font(), 0);
+    lv_obj_set_width(audio_title_label_, LV_PCT(100));
+
+    lv_obj_t* spectrum_row = lv_obj_create(audio_panel_);
+    lv_obj_set_style_bg_opa(spectrum_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(spectrum_row, 0, 0);
+    lv_obj_set_size(spectrum_row, LV_PCT(100), lvgl_theme->spacing(10));
+    lv_obj_set_style_pad_all(spectrum_row, lvgl_theme->spacing(1), 0);
+    lv_obj_set_flex_flow(spectrum_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(spectrum_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
+
+    for (size_t i = 0; i < audio_bars_.size(); ++i) {
+        audio_bars_[i] = lv_bar_create(spectrum_row);
+        lv_obj_set_flex_grow(audio_bars_[i], 1);
+        lv_bar_set_range(audio_bars_[i], 0, 100);
+        lv_bar_set_value(audio_bars_[i], 0, LV_ANIM_OFF);
+        lv_obj_set_style_bg_opa(audio_bars_[i], LV_OPA_20, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(audio_bars_[i], lvgl_theme->text_color(), LV_PART_INDICATOR);
+        lv_obj_set_style_border_width(audio_bars_[i], 0, 0);
+        lv_obj_set_width(audio_bars_[i], lvgl_theme->spacing(3));
+    }
+
+    audio_stop_button_ = lv_button_create(audio_panel_);
+    lv_obj_set_width(audio_stop_button_, LV_PCT(100));
+    lv_obj_set_style_radius(audio_stop_button_, lvgl_theme->spacing(2), 0);
+    lv_obj_set_style_bg_color(audio_stop_button_, lvgl_theme->assistant_bubble_color(), 0);
+    lv_obj_set_style_border_width(audio_stop_button_, 0, 0);
+    lv_obj_set_style_text_color(audio_stop_button_, lvgl_theme->text_color(), 0);
+    lv_obj_add_event_cb(audio_stop_button_, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            Application::GetInstance().Schedule([]() {
+                Application::GetInstance().StopAudioPlayback();
+            });
+        }
+    }, LV_EVENT_ALL, nullptr);
+    lv_obj_t* stop_label = lv_label_create(audio_stop_button_);
+    lv_obj_center(stop_label);
+    lv_label_set_text(stop_label, "Stop");
+    lv_obj_set_style_text_color(stop_label, lvgl_theme->text_color(), 0);
 
     emoji_image_ = lv_img_create(screen);
     lv_obj_align(emoji_image_, LV_ALIGN_TOP_MID, 0, text_font->line_height + lvgl_theme->spacing(8));
@@ -869,6 +926,62 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_style_text_color(low_battery_label_, lv_color_white(), 0);
     lv_obj_center(low_battery_label_);
     lv_obj_add_flag(low_battery_popup_, LV_OBJ_FLAG_HIDDEN);
+
+    audio_panel_ = lv_obj_create(screen);
+    lv_obj_set_scrollbar_mode(audio_panel_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_size(audio_panel_, LV_HOR_RES * 0.9, lvgl_theme->spacing(20));
+    lv_obj_align(audio_panel_, LV_ALIGN_BOTTOM_MID, 0, -lvgl_theme->spacing(18));
+    lv_obj_set_style_bg_color(audio_panel_, lvgl_theme->chat_background_color(), 0);
+    lv_obj_set_style_radius(audio_panel_, lvgl_theme->spacing(3), 0);
+    lv_obj_set_style_border_width(audio_panel_, 0, 0);
+    lv_obj_set_style_pad_all(audio_panel_, lvgl_theme->spacing(3), 0);
+    lv_obj_set_flex_flow(audio_panel_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(audio_panel_, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
+    lv_obj_add_flag(audio_panel_, LV_OBJ_FLAG_HIDDEN);
+
+    audio_title_label_ = lv_label_create(audio_panel_);
+    lv_label_set_text(audio_title_label_, "");
+    lv_label_set_long_mode(audio_title_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_style_text_color(audio_title_label_, lvgl_theme->text_color(), 0);
+    lv_obj_set_style_text_font(audio_title_label_, lvgl_theme->text_font()->font(), 0);
+    lv_obj_set_width(audio_title_label_, LV_PCT(100));
+
+    lv_obj_t* spectrum_row = lv_obj_create(audio_panel_);
+    lv_obj_set_style_bg_opa(spectrum_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(spectrum_row, 0, 0);
+    lv_obj_set_size(spectrum_row, LV_PCT(100), lvgl_theme->spacing(10));
+    lv_obj_set_style_pad_all(spectrum_row, lvgl_theme->spacing(1), 0);
+    lv_obj_set_flex_flow(spectrum_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(spectrum_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
+
+    for (size_t i = 0; i < audio_bars_.size(); ++i) {
+        audio_bars_[i] = lv_bar_create(spectrum_row);
+        lv_obj_set_flex_grow(audio_bars_[i], 1);
+        lv_bar_set_range(audio_bars_[i], 0, 100);
+        lv_bar_set_value(audio_bars_[i], 0, LV_ANIM_OFF);
+        lv_obj_set_style_bg_opa(audio_bars_[i], LV_OPA_20, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(audio_bars_[i], lvgl_theme->text_color(), LV_PART_INDICATOR);
+        lv_obj_set_style_border_width(audio_bars_[i], 0, 0);
+        lv_obj_set_width(audio_bars_[i], lvgl_theme->spacing(3));
+    }
+
+    audio_stop_button_ = lv_button_create(audio_panel_);
+    lv_obj_set_width(audio_stop_button_, LV_PCT(100));
+    lv_obj_set_style_radius(audio_stop_button_, lvgl_theme->spacing(2), 0);
+    lv_obj_set_style_bg_color(audio_stop_button_, lvgl_theme->assistant_bubble_color(), 0);
+    lv_obj_set_style_border_width(audio_stop_button_, 0, 0);
+    lv_obj_set_style_text_color(audio_stop_button_, lvgl_theme->text_color(), 0);
+    lv_obj_add_event_cb(audio_stop_button_, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            Application::GetInstance().Schedule([]() {
+                Application::GetInstance().StopAudioPlayback();
+            });
+        }
+    }, LV_EVENT_ALL, nullptr);
+    lv_obj_t* stop_label = lv_label_create(audio_stop_button_);
+    lv_obj_center(stop_label);
+    lv_label_set_text(stop_label, "Stop");
+    lv_obj_set_style_text_color(stop_label, lvgl_theme->text_color(), 0);
 }
 
 void LcdDisplay::SetPreviewImage(std::unique_ptr<LvglImage> image) {
@@ -1118,4 +1231,46 @@ void LcdDisplay::SetTheme(Theme* theme) {
 
     // No errors occurred. Save theme to settings
     Display::SetTheme(lvgl_theme);
+}
+
+void LcdDisplay::ShowAudioPlayer(const std::string& title) {
+    DisplayLockGuard lock(this);
+    if (audio_panel_ == nullptr) {
+        return;
+    }
+    lv_label_set_text(audio_title_label_, title.c_str());
+    lv_obj_remove_flag(audio_panel_, LV_OBJ_FLAG_HIDDEN);
+    last_spectrum_update_ = std::chrono::steady_clock::now();
+}
+
+void LcdDisplay::UpdateAudioSpectrum(const std::array<uint8_t, 8>& bars) {
+    DisplayLockGuard lock(this);
+    if (audio_panel_ == nullptr || lv_obj_has_flag(audio_panel_, LV_OBJ_FLAG_HIDDEN)) {
+        return;
+    }
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_spectrum_update_).count();
+    if (elapsed < 80) {
+        return;
+    }
+    last_spectrum_update_ = now;
+    for (size_t i = 0; i < audio_bars_.size() && i < bars.size(); ++i) {
+        if (audio_bars_[i]) {
+            lv_bar_set_value(audio_bars_[i], bars[i], LV_ANIM_OFF);
+        }
+    }
+}
+
+void LcdDisplay::HideAudioPlayer() {
+    DisplayLockGuard lock(this);
+    if (audio_panel_ == nullptr) {
+        return;
+    }
+    for (auto* bar : audio_bars_) {
+        if (bar) {
+            lv_bar_set_value(bar, 0, LV_ANIM_OFF);
+        }
+    }
+    lv_obj_add_flag(audio_panel_, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(audio_title_label_, "");
 }

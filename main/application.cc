@@ -370,7 +370,17 @@ void Application::Start() {
     callbacks.on_vad_change = [this](bool speaking) {
         xEventGroupSetBits(event_group_, MAIN_EVENT_VAD_CHANGE);
     };
+    callbacks.on_playback_frame = [this](const std::vector<int16_t>& pcm) {
+        audio_player_.OnPlaybackFrame(pcm);
+    };
     audio_service_.SetCallbacks(callbacks);
+
+#ifdef SDCARD_MOUNT_POINT
+    const char* mount_point = SDCARD_MOUNT_POINT;
+#else
+    const char* mount_point = "/sdcard";
+#endif
+    audio_player_.Initialize(mount_point, &audio_service_, display);
 
     // Start the main event loop task with priority 3
     xTaskCreate([](void* arg) {
@@ -891,4 +901,8 @@ void Application::SetAecMode(AecMode mode) {
 
 void Application::PlaySound(const std::string_view& sound) {
     audio_service_.PlaySound(sound);
+}
+
+void Application::StopAudioPlayback() {
+    audio_player_.Stop();
 }

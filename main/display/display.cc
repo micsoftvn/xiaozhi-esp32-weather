@@ -54,3 +54,15 @@ void Display::SetTheme(Theme* theme) {
 void Display::SetPowerSaveMode(bool on) {
     ESP_LOGW(TAG, "SetPowerSaveMode: %d", on);
 }
+
+void Display::ShowAudioPlayer(const std::string& title) {
+    ESP_LOGI(TAG, "ShowAudioPlayer: %s", title.c_str());
+}
+
+void Display::UpdateAudioSpectrum(const std::array<uint8_t, 8>& bars) {
+    (void)bars;
+}
+
+void Display::HideAudioPlayer() {
+    ESP_LOGI(TAG, "HideAudioPlayer");
+}

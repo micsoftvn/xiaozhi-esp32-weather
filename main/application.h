@@ -14,6 +14,7 @@
 #include "protocol.h"
 #include "ota.h"
 #include "audio_service.h"
+#include "audio/sd_audio_player.h"
 #include "device_state_event.h"
 
 
@@ -63,6 +64,8 @@ public:
     AecMode GetAecMode() const { return aec_mode_; }
     void PlaySound(const std::string_view& sound);
     AudioService& GetAudioService() { return audio_service_; }
+    SdAudioPlayer& GetAudioPlayer() { return audio_player_; }
+    void StopAudioPlayback();
 
 private:
     Application();
@@ -78,6 +81,7 @@ private:
     AecMode aec_mode_ = kAecOff;
     std::string last_error_message_;
     AudioService audio_service_;
+    SdAudioPlayer audio_player_;
 
     bool has_server_time_ = false;
     bool aborted_ = false;
