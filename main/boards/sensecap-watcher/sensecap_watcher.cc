@@ -568,11 +568,12 @@ private:
     void InitializeSdCard() {
         ESP_LOGI(TAG, "Initialize SD card");
         IoExpanderSetLevel(BSP_PWR_SDCARD, 1);
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(100));
 
         uint8_t det = IoExpanderGetLevel(BSP_SD_GPIO_DET);
+        ESP_LOGI(TAG, "SD detect pin level: %u", det);
         if (det != 0) {
-            ESP_LOGW(TAG, "SD card detect pin indicates no card (level %u), attempting mount anyway", det);
+            ESP_LOGW(TAG, "SD card detect indicates no card, continuing to probe");
         }
 
         gpio_set_level(BSP_SD_SPI_CS, 1);
@@ -594,11 +595,30 @@ private:
         slot_config.gpio_cd = GPIO_NUM_NC;
         slot_config.gpio_wp = GPIO_NUM_NC;
 
+        gpio_config_t detect_cfg = {
+            .pin_bit_mask = 1ULL << BSP_SD_SPI_CS,
+            .mode = GPIO_MODE_OUTPUT,
+            .pull_up_en = GPIO_PULLUP_ENABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        gpio_config(&detect_cfg);
+        gpio_set_level(BSP_SD_SPI_CS, 1);
+
         esp_err_t ret = esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot_config, &mount_config, &sd_card_);
         if (ret == ESP_OK) {
             ESP_LOGI(TAG, "SD card mounted at /sdcard");
+            sdmmc_card_print_info(stdout, sd_card_);
         } else {
-            ESP_LOGW(TAG, "Failed to mount SD card: %s", esp_err_to_name(ret));
+            if (ret == ESP_ERR_INVALID_STATE) {
+                ESP_LOGE(TAG, "SD mount failed: invalid state. Is SPI bus already in use?");
+            } else if (ret == ESP_ERR_TIMEOUT) {
+                ESP_LOGE(TAG, "SD mount timeout. Check wiring and card insertion.");
+            } else if (ret == ESP_ERR_NOT_FOUND) {
+                ESP_LOGE(TAG, "SD mount failed: slot not found");
+            } else {
+                ESP_LOGE(TAG, "Failed to mount SD card: %s", esp_err_to_name(ret));
+            }
             IoExpanderSetLevel(BSP_PWR_SDCARD, 0);
         }
     }

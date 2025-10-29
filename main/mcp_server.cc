@@ -352,6 +352,7 @@ void McpServer::AddUserOnlyTools() {
         [](const PropertyList&) -> ReturnValue {
             auto& player = Application::GetInstance().GetAudioPlayer();
             const std::string& mount_point = player.mount_point();
+            ESP_LOGI(TAG, "sdcard.get_usage: mount_point=%s", mount_point.c_str());
             uint64_t total = 0;
             uint64_t used = 0;
             esp_err_t err = esp_vfs_fat_info(mount_point.c_str(), &total, &used);
@@ -359,9 +360,11 @@ void McpServer::AddUserOnlyTools() {
                 cJSON* root = cJSON_CreateObject();
                 cJSON_AddStringToObject(root, "mount_point", mount_point.c_str());
                 if (err == ESP_ERR_INVALID_STATE) {
+                    ESP_LOGW(TAG, "sdcard.get_usage: esp_vfs_fat_info returned ESP_ERR_INVALID_STATE (not mounted)");
                     cJSON_AddStringToObject(root, "status", "not_mounted");
                     cJSON_AddStringToObject(root, "message", "SD card is not mounted. Verify board initialization and wiring.");
                 } else {
+                    ESP_LOGW(TAG, "sdcard.get_usage: esp_vfs_fat_info error %s", esp_err_to_name(err));
                     cJSON_AddStringToObject(root, "status", "error");
                     cJSON_AddStringToObject(root, "message", esp_err_to_name(err));
                 }

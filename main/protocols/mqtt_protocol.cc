@@ -5,6 +5,7 @@
 
 #include <esp_log.h>
 #include <cstring>
+#include <exception>
 #include <arpa/inet.h>
 #include "assets/lang_config.h"
 
@@ -57,6 +58,30 @@ bool MqttProtocol::StartMqttClient(bool report_error) {
 
     Settings settings("mqtt", false);
     auto endpoint = settings.GetString("endpoint");
+    auto trim = [](std::string& value) {
+        auto first = value.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) {
+            value.clear();
+            return;
+        }
+        auto last = value.find_last_not_of(" \t\r\n");
+        value = value.substr(first, last - first + 1);
+    };
+    trim(endpoint);
+    // Strip common URI schemes if present
+    constexpr const char* kSchemes[] = {"mqtt://", "mqtts://", "ssl://", "tls://"};
+    for (const auto* scheme : kSchemes) {
+        size_t len = strlen(scheme);
+        if (endpoint.size() > len && endpoint.rfind(scheme, 0) == 0) {
+            endpoint = endpoint.substr(len);
+            break;
+        }
+    }
+    // Guard against malformed values such as ":host:port"
+    while (!endpoint.empty() && endpoint.front() == ':') {
+        endpoint.erase(endpoint.begin());
+    }
+
     auto client_id = settings.GetString("client_id");
     auto username = settings.GetString("username");
     auto password = settings.GetString("password");
@@ -123,12 +148,29 @@ bool MqttProtocol::StartMqttClient(bool report_error) {
     ESP_LOGI(TAG, "Connecting to endpoint %s", endpoint.c_str());
     std::string broker_address;
     int broker_port = 8883;
-    size_t pos = endpoint.find(':');
-    if (pos != std::string::npos) {
+    size_t pos = endpoint.rfind(':');
+    if (pos != std::string::npos && pos + 1 < endpoint.size()) {
         broker_address = endpoint.substr(0, pos);
-        broker_port = std::stoi(endpoint.substr(pos + 1));
+        try {
+            broker_port = std::stoi(endpoint.substr(pos + 1));
+        } catch (const std::exception& e) {
+            ESP_LOGW(TAG, "Invalid MQTT port in endpoint %s: %s", endpoint.c_str(), e.what());
+            broker_address.clear();
+        }
     } else {
         broker_address = endpoint;
+    }
+    trim(broker_address);
+    while (!broker_address.empty() && broker_address.front() == ':') {
+        broker_address.erase(broker_address.begin());
+    }
+
+    if (broker_address.empty()) {
+        ESP_LOGW(TAG, "MQTT endpoint is invalid");
+        if (report_error) {
+            SetError(Lang::Strings::SERVER_NOT_FOUND);
+        }
+        return false;
     }
     if (!mqtt_->Connect(broker_address, broker_port, client_id, username, password)) {
         ESP_LOGE(TAG, "Failed to connect to endpoint");
