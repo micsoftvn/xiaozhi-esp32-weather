@@ -17,9 +17,12 @@
 #include <esp_lcd_panel_ops.h>
 #include <esp_lcd_spd2010.h>
 #include <esp_adc/adc_oneshot.h>
+#include <esp_vfs_fat.h>
 #include <driver/spi_master.h>
 #include <driver/i2c_master.h>
 #include <driver/spi_common.h>
+#include <driver/sdmmc_host.h>
+#include <driver/sdspi_host.h>
 #include <wifi_station.h>
 #include <iot_button.h>
 #include <iot_knob.h>
@@ -29,6 +32,7 @@
 #include <esp_mac.h>
 #include <nvs_flash.h>
 #include <esp_app_desc.h>
+#include <sdmmc_cmd.h>
 
 #include "assets/lang_config.h"
 
@@ -94,6 +98,7 @@ private:
     button_driver_t* btn_driver_ = nullptr;
     static SensecapWatcher* instance_;
     SscmaCamera* camera_ = nullptr;
+    sdmmc_card_t* sd_card_ = nullptr;
 
     void InitializePowerSaveTimer() {
         power_save_timer_ = new PowerSaveTimer(-1, 60, 300);
@@ -560,6 +565,44 @@ private:
         camera_ = new SscmaCamera(io_exp_handle);
     }
 
+    void InitializeSdCard() {
+        ESP_LOGI(TAG, "Initialize SD card");
+        IoExpanderSetLevel(BSP_PWR_SDCARD, 1);
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        uint8_t det = IoExpanderGetLevel(BSP_SD_GPIO_DET);
+        if (det != 0) {
+            ESP_LOGW(TAG, "SD card detect pin indicates no card (level %u), attempting mount anyway", det);
+        }
+
+        gpio_set_level(BSP_SD_SPI_CS, 1);
+
+        sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+        host.slot = static_cast<int>(BSP_SD_SPI_NUM);
+        host.max_freq_khz = 10000;
+
+        esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+            .format_if_mount_failed = false,
+            .max_files = 5,
+            .allocation_unit_size = 0,
+            .disk_status_check_enable = true,
+        };
+
+        sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+        slot_config.host_id = static_cast<spi_host_device_t>(BSP_SD_SPI_NUM);
+        slot_config.gpio_cs = BSP_SD_SPI_CS;
+        slot_config.gpio_cd = GPIO_NUM_NC;
+        slot_config.gpio_wp = GPIO_NUM_NC;
+
+        esp_err_t ret = esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot_config, &mount_config, &sd_card_);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "SD card mounted at /sdcard");
+        } else {
+            ESP_LOGW(TAG, "Failed to mount SD card: %s", esp_err_to_name(ret));
+            IoExpanderSetLevel(BSP_PWR_SDCARD, 0);
+        }
+    }
+
 public:
     SensecapWatcher() {
         ESP_LOGI(TAG, "Initialize Sensecap Watcher");
@@ -567,6 +610,7 @@ public:
         InitializeI2c();
         InitializeSpi();
         InitializeExpander();
+        InitializeSdCard();
         InitializeCmd();  //工厂生产测试使用
         InitializeButton();
         InitializeKnob();

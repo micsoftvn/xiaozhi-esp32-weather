@@ -356,7 +356,22 @@ void McpServer::AddUserOnlyTools() {
             uint64_t used = 0;
             esp_err_t err = esp_vfs_fat_info(mount_point.c_str(), &total, &used);
             if (err != ESP_OK) {
-                throw std::runtime_error("Failed to read filesystem stats: " + std::string(esp_err_to_name(err)));
+                cJSON* root = cJSON_CreateObject();
+                cJSON_AddStringToObject(root, "mount_point", mount_point.c_str());
+                if (err == ESP_ERR_INVALID_STATE) {
+                    cJSON_AddStringToObject(root, "status", "not_mounted");
+                    cJSON_AddStringToObject(root, "message", "SD card is not mounted. Verify board initialization and wiring.");
+                } else {
+                    cJSON_AddStringToObject(root, "status", "error");
+                    cJSON_AddStringToObject(root, "message", esp_err_to_name(err));
+                }
+                char* json_str = cJSON_PrintUnformatted(root);
+                std::string result(json_str ? json_str : "{}");
+                if (json_str) {
+                    cJSON_free(json_str);
+                }
+                cJSON_Delete(root);
+                return result;
             }
             uint64_t free = total - used;
 
@@ -383,6 +398,10 @@ void McpServer::AddUserOnlyTools() {
             int limit = properties["limit"].value<int>();
             auto http = board.GetNetwork()->CreateHttp(5);
             const std::string url = "https://vnexpress.net/rss/tin-moi-nhat.rss";
+            http->SetHeader("User-Agent", "Mozilla/5.0 (X11; Linux x86_64)");
+            http->SetHeader("Accept", "application/rss+xml, application/xml;q=0.9, */*;q=0.8");
+            http->SetHeader("Accept-Encoding", "identity");
+            http->SetHeader("Connection", "close");
             if (!http->Open("GET", url)) {
                 throw std::runtime_error("Failed to open URL: " + url);
             }
@@ -493,6 +512,10 @@ void McpServer::AddUserOnlyTools() {
             auto& board = Board::GetInstance();
             auto http = board.GetNetwork()->CreateHttp(5);
             std::string url = "https://api.duckduckgo.com/?q=" + url_encode(query) + "&format=json&no_html=1&skip_disambig=1";
+            http->SetHeader("User-Agent", "Mozilla/5.0 (X11; Linux x86_64)");
+            http->SetHeader("Accept", "application/json");
+            http->SetHeader("Accept-Encoding", "identity");
+            http->SetHeader("Connection", "close");
             if (!http->Open("GET", url)) {
                 throw std::runtime_error("Failed to open DuckDuckGo API");
             }
@@ -583,6 +606,9 @@ void McpServer::AddUserOnlyTools() {
             const std::string url = "https://portal.vietcombank.com.vn/Usercontrols/TVPortal.TyGia/pXML.aspx?b=10";
             http->SetHeader("User-Agent", "Mozilla/5.0 (X11; Linux x86_64)");
             http->SetHeader("Referer", "https://portal.vietcombank.com.vn/");
+            http->SetHeader("Accept", "application/xml, text/xml;q=0.9, */*;q=0.8");
+            http->SetHeader("Accept-Encoding", "identity");
+            http->SetHeader("Connection", "close");
             if (!http->Open("GET", url)) {
                 throw std::runtime_error("Failed to open Vietcombank exchange rate API");
             }
@@ -666,6 +692,161 @@ void McpServer::AddUserOnlyTools() {
             }
             cJSON_Delete(root);
             return result;
+        });
+
+    AddTool("external.nvd.cve_lookup",
+        "Lookup CVE details using the NVD API.",
+        PropertyList({
+            Property("cve_id", kPropertyTypeString),
+            Property("api_key", kPropertyTypeString, "")
+        }),
+        [](const PropertyList& properties) -> ReturnValue {
+            auto& board = Board::GetInstance();
+            auto cve_id = properties["cve_id"].value<std::string>();
+            auto api_key = properties["api_key"].value<std::string>();
+
+            auto url_encode = [](const std::string& value) -> std::string {
+                const char hex[] = "0123456789ABCDEF";
+                std::string encoded;
+                encoded.reserve(value.size() * 3);
+                for (unsigned char c : value) {
+                    if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+                        encoded.push_back(static_cast<char>(c));
+                    } else if (c == ' ') {
+                        encoded.push_back('+');
+                    } else {
+                        encoded.push_back('%');
+                        encoded.push_back(hex[(c >> 4) & 0x0F]);
+                        encoded.push_back(hex[c & 0x0F]);
+                    }
+                }
+                return encoded;
+            };
+
+            auto http = board.GetNetwork()->CreateHttp(5);
+            std::string url = "https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=" + url_encode(cve_id);
+            http->SetHeader("User-Agent", "Mozilla/5.0 (X11; Linux x86_64)");
+            http->SetHeader("Accept", "application/json");
+            http->SetHeader("Accept-Encoding", "identity");
+            http->SetHeader("Connection", "close");
+            if (!api_key.empty()) {
+                http->SetHeader("apiKey", api_key);
+            }
+            if (!http->Open("GET", url)) {
+                throw std::runtime_error("Failed to open NVD API");
+            }
+            if (http->GetStatusCode() != 200) {
+                throw std::runtime_error("NVD API returned status " + std::to_string(http->GetStatusCode()));
+            }
+            std::string body = http->ReadAll();
+            http->Close();
+
+            cJSON* root = cJSON_Parse(body.c_str());
+            if (!root) {
+                throw std::runtime_error("Failed to parse NVD response");
+            }
+
+            cJSON* vulnerabilities = cJSON_GetObjectItemCaseSensitive(root, "vulnerabilities");
+            if (!cJSON_IsArray(vulnerabilities) || cJSON_GetArraySize(vulnerabilities) == 0) {
+                cJSON_Delete(root);
+                throw std::runtime_error("CVE not found");
+            }
+
+            cJSON* entry = cJSON_GetArrayItem(vulnerabilities, 0);
+            cJSON* cve = cJSON_GetObjectItemCaseSensitive(entry, "cve");
+            if (!cJSON_IsObject(cve)) {
+                cJSON_Delete(root);
+                throw std::runtime_error("Invalid NVD response structure");
+            }
+
+            auto get_string = [](cJSON* obj, const char* name) -> std::string {
+                cJSON* item = cJSON_GetObjectItemCaseSensitive(obj, name);
+                if (cJSON_IsString(item) && item->valuestring) {
+                    return item->valuestring;
+                }
+                return "";
+            };
+
+            std::string published = get_string(cve, "published");
+            std::string last_modified = get_string(cve, "lastModified");
+
+            std::string description;
+            cJSON* descriptions = cJSON_GetObjectItemCaseSensitive(cve, "descriptions");
+            if (cJSON_IsArray(descriptions)) {
+                cJSON* desc = nullptr;
+                cJSON_ArrayForEach(desc, descriptions) {
+                    auto lang = get_string(desc, "lang");
+                    if (lang == "en") {
+                        description = get_string(desc, "value");
+                        break;
+                    }
+                    if (description.empty()) {
+                        description = get_string(desc, "value");
+                    }
+                }
+            }
+
+            double base_score = 0.0;
+            std::string base_severity;
+
+            auto extract_metric = [&](const char* metric_name) {
+                cJSON* metrics = cJSON_GetObjectItemCaseSensitive(cve, "metrics");
+                if (!cJSON_IsObject(metrics)) {
+                    return;
+                }
+                cJSON* metric_array = cJSON_GetObjectItemCaseSensitive(metrics, metric_name);
+                if (!cJSON_IsArray(metric_array) || cJSON_GetArraySize(metric_array) == 0) {
+                    return;
+                }
+                cJSON* metric_entry = cJSON_GetArrayItem(metric_array, 0);
+                cJSON* cvss_data = cJSON_GetObjectItemCaseSensitive(metric_entry, "cvssData");
+                if (!cJSON_IsObject(cvss_data)) {
+                    return;
+                }
+                cJSON* severity = cJSON_GetObjectItemCaseSensitive(metric_entry, "baseSeverity");
+                cJSON* score = cJSON_GetObjectItemCaseSensitive(metric_entry, "baseScore");
+                if (cJSON_IsString(severity) && severity->valuestring) {
+                    base_severity = severity->valuestring;
+                }
+                if (cJSON_IsNumber(score)) {
+                    base_score = score->valuedouble;
+                }
+            };
+
+            extract_metric("cvssMetricV31");
+            if (base_severity.empty()) {
+                extract_metric("cvssMetricV3");
+            }
+            if (base_severity.empty()) {
+                extract_metric("cvssMetricV2");
+            }
+
+            cJSON* result = cJSON_CreateObject();
+            cJSON_AddStringToObject(result, "cve_id", cve_id.c_str());
+            if (!published.empty()) {
+                cJSON_AddStringToObject(result, "published", published.c_str());
+            }
+            if (!last_modified.empty()) {
+                cJSON_AddStringToObject(result, "last_modified", last_modified.c_str());
+            }
+            if (!description.empty()) {
+                cJSON_AddStringToObject(result, "description", description.c_str());
+            }
+            if (!base_severity.empty()) {
+                cJSON_AddStringToObject(result, "severity", base_severity.c_str());
+            }
+            if (base_score > 0.0) {
+                cJSON_AddNumberToObject(result, "score", base_score);
+            }
+
+            char* json_str = cJSON_PrintUnformatted(result);
+            std::string json_result(json_str ? json_str : "{}");
+            if (json_str) {
+                cJSON_free(json_str);
+            }
+            cJSON_Delete(result);
+            cJSON_Delete(root);
+            return json_result;
         });
 }
 
