@@ -393,6 +393,91 @@ void McpServer::AddUserOnlyTools() {
             return result;
         });
 
+    AddTool("external.worker.health",
+        "Kiểm tra trạng thái Cloudflare MCP Worker.",
+        PropertyList(),
+        [](const PropertyList&) -> ReturnValue {
+            auto& board = Board::GetInstance();
+            auto http = board.GetNetwork()->CreateHttp(5);
+            http->SetHeader("Accept", "application/json");
+            if (!http->Open("GET", "https://ai.micsoftvn.workers.dev/health")) {
+                throw std::runtime_error("Failed to open MCP worker health endpoint");
+            }
+
+            int status_code = http->GetStatusCode();
+            std::string body = http->ReadAll();
+            http->Close();
+
+            if (status_code != 200) {
+                throw std::runtime_error("MCP worker health returned status " + std::to_string(status_code));
+            }
+            if (body.empty()) {
+                body = "{\"status\":\"unknown\"}";
+            }
+            return body;
+        });
+
+    AddTool("external.worker.news",
+        "Lấy tin tức mới nhất thông qua Cloudflare MCP Worker.",
+        PropertyList({ Property("limit", kPropertyTypeInteger, 5, 1, 10) }),
+        [](const PropertyList& properties) -> ReturnValue {
+            int limit = properties["limit"].value<int>();
+            auto& board = Board::GetInstance();
+            auto http = board.GetNetwork()->CreateHttp(5);
+            http->SetHeader("Content-Type", "application/json");
+            http->SetHeader("Accept", "application/json");
+            if (!http->Open("POST", "https://ai.micsoftvn.workers.dev/mcp")) {
+                throw std::runtime_error("Failed to open MCP worker news endpoint");
+            }
+
+            cJSON* payload = cJSON_CreateObject();
+            cJSON_AddStringToObject(payload, "tool", "vn_news");
+            cJSON* input = cJSON_CreateObject();
+            cJSON_AddNumberToObject(input, "limit", limit);
+            cJSON_AddItemToObject(payload, "input", input);
+
+            char* payload_str = cJSON_PrintUnformatted(payload);
+            http->Write(payload_str, strlen(payload_str));
+            http->Write("", 0);
+            cJSON_free(payload_str);
+            cJSON_Delete(payload);
+
+            int status_code = http->GetStatusCode();
+            std::string body = http->ReadAll();
+            http->Close();
+
+            if (status_code != 200) {
+                throw std::runtime_error("MCP worker news returned status " + std::to_string(status_code));
+            }
+
+            cJSON* response = cJSON_Parse(body.c_str());
+            if (!response) {
+                return body;
+            }
+            std::string result;
+            auto error = cJSON_GetObjectItem(response, "error");
+            if (cJSON_IsString(error)) {
+                result = error->valuestring;
+            } else {
+                auto result_item = cJSON_GetObjectItem(response, "result");
+                if (cJSON_IsString(result_item)) {
+                    result = result_item->valuestring;
+                } else if (result_item != nullptr) {
+                    char* json_str = cJSON_PrintUnformatted(result_item);
+                    if (json_str) {
+                        result.assign(json_str);
+                        cJSON_free(json_str);
+                    }
+                }
+            }
+            cJSON_Delete(response);
+
+            if (result.empty()) {
+                return "{}";
+            }
+            return result;
+        });
+
     AddTool("external.vnexpress.latest",
         "Fetch the latest headlines from VNExpress RSS feed.",
         PropertyList({ Property("limit", kPropertyTypeInteger, 5, 1, 20) }),
