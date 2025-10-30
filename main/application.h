@@ -57,6 +57,8 @@ public:
     void StopListening();
     void Reboot();
     void WakeWordInvoke(const std::string& wake_word);
+    std::string GetIdleStatusText();
+    void RequestWeatherUpdate(bool force = false);
     bool UpgradeFirmware(Ota& ota, const std::string& url = "");
     bool CanEnterSleepMode();
     void SendMcpMessage(const std::string& payload);
@@ -86,6 +88,23 @@ private:
     bool has_server_time_ = false;
     bool aborted_ = false;
     int clock_ticks_ = 0;
+
+    struct WeatherInfo {
+        std::string city;
+        std::string description;
+        std::string icon;
+        float temperature_c = 0.0f;
+        int humidity = 0;
+        std::chrono::system_clock::time_point fetched_at{};
+    };
+
+    std::mutex weather_mutex_;
+    WeatherInfo weather_info_;
+    bool weather_available_ = false;
+    bool weather_fetch_in_progress_ = false;
+    std::chrono::steady_clock::time_point weather_last_request_{};
+    std::chrono::steady_clock::time_point weather_last_success_{};
+
     TaskHandle_t check_new_version_task_handle_ = nullptr;
     TaskHandle_t main_event_loop_task_handle_ = nullptr;
 
@@ -94,6 +113,9 @@ private:
     void CheckAssetsVersion();
     void ShowActivationCode(const std::string& code, const std::string& message);
     void SetListeningMode(ListeningMode mode);
+    void FetchWeatherTask();
+    bool FetchWeatherData(WeatherInfo& info);
+    std::string FormatWeatherSummary(const WeatherInfo& info) const;
 };
 
 

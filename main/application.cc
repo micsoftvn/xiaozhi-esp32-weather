@@ -16,6 +16,12 @@
 #include <driver/gpio.h>
 #include <arpa/inet.h>
 #include <font_awesome.h>
+#include <thread>
+#include <sstream>
+#include <iomanip>
+#include <algorithm>
+#include <cctype>
+#include <cmath>
 
 #define TAG "Application"
 
@@ -34,6 +40,44 @@ static const char* const STATE_STRINGS[] = {
     "fatal_error",
     "invalid_state"
 };
+
+static std::string UrlEncode(const std::string& value) {
+    std::ostringstream escaped;
+    escaped.fill('0');
+    escaped << std::hex;
+    for (unsigned char c : value) {
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            escaped << c;
+        } else {
+            escaped << '%' << std::uppercase << std::setw(2) << int(c);
+            escaped << std::nouppercase;
+        }
+    }
+    return escaped.str();
+}
+
+static std::string CapitalizeWords(const std::string& text) {
+    std::string result = text;
+    bool new_word = true;
+    for (auto& ch : result) {
+        if (std::isspace(static_cast<unsigned char>(ch))) {
+            new_word = true;
+        } else {
+            if (new_word) {
+                ch = std::toupper(static_cast<unsigned char>(ch));
+                new_word = false;
+            } else {
+                ch = std::tolower(static_cast<unsigned char>(ch));
+            }
+        }
+    }
+    return result;
+}
+
+static constexpr const char* kDefaultWeatherCity = "Hanoi";
+static constexpr const char* kDefaultWeatherApiKey = "fbf5a0e942e6fea3ff18103b9fd46ed9";
+static constexpr std::chrono::minutes kWeatherSuccessTtl{30};
+static constexpr std::chrono::minutes kWeatherRetryInterval{5};
 
 Application::Application() {
     event_group_ = xEventGroupCreate();
@@ -542,6 +586,7 @@ void Application::Start() {
 
     SystemInfo::PrintHeapStats();
     SetDeviceState(kDeviceStateIdle);
+    RequestWeatherUpdate(true);
 
     has_server_time_ = ota.HasServerTime();
     if (protocol_started) {
@@ -611,6 +656,9 @@ void Application::MainEventLoop() {
             clock_ticks_++;
             auto display = Board::GetInstance().GetDisplay();
             display->UpdateStatusBar();
+            if (clock_ticks_ % 60 == 0) {
+                RequestWeatherUpdate(false);
+            }
         
             // Print the debug info every 10 seconds
             if (clock_ticks_ % 10 == 0) {
@@ -697,6 +745,7 @@ void Application::SetDeviceState(DeviceState state) {
             display->SetEmotion("neutral");
             audio_service_.EnableVoiceProcessing(false);
             audio_service_.EnableWakeWordDetection(true);
+            RequestWeatherUpdate(false);
             break;
         case kDeviceStateConnecting:
             display->SetStatus(Lang::Strings::CONNECTING);
@@ -905,4 +954,204 @@ void Application::PlaySound(const std::string_view& sound) {
 
 void Application::StopAudioPlayback() {
     audio_player_.Stop();
+}
+
+std::string Application::GetIdleStatusText() {
+    char time_str[16] = "";
+    bool time_valid = false;
+    time_t now = time(nullptr);
+    struct tm tm_buf;
+    if (localtime_r(&now, &tm_buf) != nullptr && tm_buf.tm_year >= 2025 - 1900) {
+        strftime(time_str, sizeof(time_str), "%H:%M", &tm_buf);
+        time_valid = true;
+    } else {
+        ESP_LOGW(TAG, "System time is not set correctly for idle status");
+    }
+
+    std::string status = time_valid ? std::string(time_str) : std::string();
+    std::string weather_summary;
+    {
+        std::lock_guard<std::mutex> lock(weather_mutex_);
+        if (weather_available_) {
+            weather_summary = FormatWeatherSummary(weather_info_);
+        }
+    }
+
+    if (!weather_summary.empty()) {
+        if (!status.empty()) {
+            status.append("  ");
+        }
+        status.append(weather_summary);
+    }
+
+    if (status.empty()) {
+        status = time_valid ? std::string(time_str) : std::string(Lang::Strings::STANDBY);
+    }
+    return status;
+}
+
+void Application::RequestWeatherUpdate(bool force) {
+    auto now = std::chrono::steady_clock::now();
+    {
+        std::lock_guard<std::mutex> lock(weather_mutex_);
+        if (weather_fetch_in_progress_) {
+            if (force) {
+                ESP_LOGW(TAG, "Weather update already running");
+            }
+            return;
+        }
+        if (!force) {
+            if (weather_last_request_ != std::chrono::steady_clock::time_point{} &&
+                now - weather_last_request_ < kWeatherRetryInterval) {
+                return;
+            }
+            if (weather_available_ &&
+                weather_last_success_ != std::chrono::steady_clock::time_point{} &&
+                now - weather_last_success_ < kWeatherSuccessTtl) {
+                return;
+            }
+        }
+        weather_fetch_in_progress_ = true;
+        weather_last_request_ = now;
+    }
+
+    ESP_LOGI(TAG, "Scheduling weather update");
+    BaseType_t created = xTaskCreate([](void* arg) {
+        static_cast<Application*>(arg)->FetchWeatherTask();
+        vTaskDelete(nullptr);
+    }, "weather_fetch", 6144, this, 3, nullptr);
+
+    if (created != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create weather fetch task");
+        std::lock_guard<std::mutex> lock(weather_mutex_);
+        weather_fetch_in_progress_ = false;
+    }
+}
+
+void Application::FetchWeatherTask() {
+    WeatherInfo info;
+    bool success = FetchWeatherData(info);
+    {
+        std::lock_guard<std::mutex> lock(weather_mutex_);
+        weather_fetch_in_progress_ = false;
+        if (success) {
+            weather_info_ = std::move(info);
+            weather_available_ = true;
+            weather_last_success_ = std::chrono::steady_clock::now();
+        }
+    }
+
+    if (success) {
+        ESP_LOGI(TAG, "Weather updated successfully");
+        Schedule([this]() {
+            if (device_state_ == kDeviceStateIdle) {
+                auto display = Board::GetInstance().GetDisplay();
+                auto status_text = GetIdleStatusText();
+                display->SetStatus(status_text.c_str());
+            }
+        });
+    }
+}
+
+bool Application::FetchWeatherData(WeatherInfo& info) {
+    Settings weather_settings("weather", false);
+    std::string city = weather_settings.GetString("city");
+    if (city.empty()) {
+        city = kDefaultWeatherCity;
+    }
+    std::string api_key = weather_settings.GetString("api_key");
+    if (api_key.empty()) {
+        api_key = kDefaultWeatherApiKey;
+    }
+
+    auto& board = Board::GetInstance();
+    auto http = board.GetNetwork()->CreateHttp(5);
+    http->SetHeader("Accept", "application/json");
+    http->SetHeader("User-Agent", "xiaozhi-weather/1.0");
+
+    std::string url = "https://api.openweathermap.org/data/2.5/weather?q=" + UrlEncode(city) +
+        "&appid=" + api_key + "&units=metric&lang=en";
+
+    ESP_LOGI(TAG, "Fetching weather from %s", url.c_str());
+    if (!http->Open("GET", url)) {
+        ESP_LOGE(TAG, "Failed to open weather URL");
+        return false;
+    }
+
+    int status_code = http->GetStatusCode();
+    std::string body = http->ReadAll();
+    http->Close();
+
+    if (status_code != 200) {
+        ESP_LOGE(TAG, "Weather request failed with status %d", status_code);
+        return false;
+    }
+
+    cJSON* root = cJSON_Parse(body.c_str());
+    if (!root) {
+        ESP_LOGE(TAG, "Failed to parse weather response JSON");
+        return false;
+    }
+
+    bool success = false;
+    do {
+        cJSON* name = cJSON_GetObjectItem(root, "name");
+        if (!cJSON_IsString(name)) {
+            break;
+        }
+        cJSON* main_obj = cJSON_GetObjectItem(root, "main");
+        if (!cJSON_IsObject(main_obj)) {
+            break;
+        }
+        cJSON* temp = cJSON_GetObjectItem(main_obj, "temp");
+        if (!cJSON_IsNumber(temp)) {
+            break;
+        }
+        cJSON* humidity = cJSON_GetObjectItem(main_obj, "humidity");
+
+        cJSON* weather_array = cJSON_GetObjectItem(root, "weather");
+        if (!cJSON_IsArray(weather_array) || cJSON_GetArraySize(weather_array) == 0) {
+            break;
+        }
+        cJSON* weather0 = cJSON_GetArrayItem(weather_array, 0);
+        if (!cJSON_IsObject(weather0)) {
+            break;
+        }
+        cJSON* description = cJSON_GetObjectItem(weather0, "description");
+        cJSON* icon = cJSON_GetObjectItem(weather0, "icon");
+
+        info.city = name->valuestring;
+        info.temperature_c = static_cast<float>(temp->valuedouble);
+        info.humidity = cJSON_IsNumber(humidity) ? humidity->valueint : 0;
+        info.description = description && cJSON_IsString(description) ? CapitalizeWords(description->valuestring) : "";
+        info.icon = icon && cJSON_IsString(icon) ? icon->valuestring : "";
+        info.fetched_at = std::chrono::system_clock::now();
+        success = true;
+    } while (false);
+
+    cJSON_Delete(root);
+
+    if (!success) {
+        ESP_LOGE(TAG, "Weather response missing required fields");
+    }
+    return success;
+}
+
+std::string Application::FormatWeatherSummary(const WeatherInfo& info) const {
+    if (info.city.empty() && info.description.empty()) {
+        return "";
+    }
+
+    int rounded_temp = static_cast<int>(std::round(info.temperature_c));
+    char buffer[96];
+    if (!info.city.empty() && !info.description.empty()) {
+        snprintf(buffer, sizeof(buffer), "%s %d°C %s", info.city.c_str(), rounded_temp, info.description.c_str());
+    } else if (!info.city.empty()) {
+        snprintf(buffer, sizeof(buffer), "%s %d°C", info.city.c_str(), rounded_temp);
+    } else if (!info.description.empty()) {
+        snprintf(buffer, sizeof(buffer), "%d°C %s", rounded_temp, info.description.c_str());
+    } else {
+        snprintf(buffer, sizeof(buffer), "%d°C", rounded_temp);
+    }
+    return buffer;
 }
