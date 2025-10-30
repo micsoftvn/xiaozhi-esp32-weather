@@ -40,10 +40,23 @@ protected:
     lv_obj_t* audio_stop_button_ = nullptr;
     std::chrono::steady_clock::time_point last_spectrum_update_{};
 
+    lv_obj_t* idle_panel_ = nullptr;
+    lv_obj_t* idle_city_label_ = nullptr;
+    lv_obj_t* idle_greeting_label_ = nullptr;
+    lv_obj_t* idle_time_label_ = nullptr;
+    lv_obj_t* idle_icon_label_ = nullptr;
+    lv_obj_t* idle_temp_label_ = nullptr;
+    lv_obj_t* idle_humidity_label_ = nullptr;
+    lv_obj_t* idle_day_label_ = nullptr;
+    lv_obj_t* idle_date_label_ = nullptr;
+    lv_obj_t* idle_desc_label_ = nullptr;
+    bool idle_mode_enabled_ = false;
+
     void InitializeLcdThemes();
     void SetupUI();
     virtual bool Lock(int timeout_ms = 0) override;
     virtual void Unlock() override;
+    void HideIdleCardInternal();
 
 protected:
     // 添加protected构造函数
@@ -57,6 +70,11 @@ public:
     virtual void ShowAudioPlayer(const std::string& title) override;
     virtual void UpdateAudioSpectrum(const std::array<uint8_t, 8>& bars) override;
     virtual void HideAudioPlayer() override;
+    virtual void ShowNotification(const char* notification, int duration_ms = 3000) override;
+    virtual void ShowNotification(const std::string& notification, int duration_ms = 3000) override;
+    virtual void ShowIdleCard(const IdleCardInfo& info) override;
+    virtual void UpdateIdleCardTime(const std::string& time_text) override;
+    virtual void HideIdleCard() override;
 
     // Add theme switching function
     virtual void SetTheme(Theme* theme) override;

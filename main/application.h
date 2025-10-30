@@ -59,6 +59,7 @@ public:
     void WakeWordInvoke(const std::string& wake_word);
     std::string GetIdleStatusText();
     void RequestWeatherUpdate(bool force = false);
+    void UpdateIdleDisplay();
     bool UpgradeFirmware(Ota& ota, const std::string& url = "");
     bool CanEnterSleepMode();
     void SendMcpMessage(const std::string& payload);
@@ -116,6 +117,7 @@ private:
     void FetchWeatherTask();
     bool FetchWeatherData(WeatherInfo& info);
     std::string FormatWeatherSummary(const WeatherInfo& info) const;
+    const char* WeatherIconFromCode(const std::string& code) const;
 };
 
 

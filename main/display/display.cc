@@ -66,3 +66,14 @@ void Display::UpdateAudioSpectrum(const std::array<uint8_t, 8>& bars) {
 void Display::HideAudioPlayer() {
     ESP_LOGI(TAG, "HideAudioPlayer");
 }
+
+void Display::ShowIdleCard(const IdleCardInfo& info) {
+    (void)info;
+}
+
+void Display::UpdateIdleCardTime(const std::string& time_text) {
+    (void)time_text;
+}
+
+void Display::HideIdleCard() {
+}

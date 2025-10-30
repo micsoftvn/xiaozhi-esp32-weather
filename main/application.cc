@@ -655,6 +655,7 @@ void Application::MainEventLoop() {
         if (bits & MAIN_EVENT_CLOCK_TICK) {
             clock_ticks_++;
             auto display = Board::GetInstance().GetDisplay();
+            UpdateIdleDisplay();
             display->UpdateStatusBar();
             if (clock_ticks_ % 60 == 0) {
                 RequestWeatherUpdate(false);
@@ -738,6 +739,9 @@ void Application::SetDeviceState(DeviceState state) {
     auto display = board.GetDisplay();
     auto led = board.GetLed();
     led->OnStateChanged();
+    if (state != kDeviceStateIdle) {
+        display->HideIdleCard();
+    }
     switch (state) {
         case kDeviceStateUnknown:
         case kDeviceStateIdle:
@@ -746,6 +750,7 @@ void Application::SetDeviceState(DeviceState state) {
             audio_service_.EnableVoiceProcessing(false);
             audio_service_.EnableWakeWordDetection(true);
             RequestWeatherUpdate(false);
+            UpdateIdleDisplay();
             break;
         case kDeviceStateConnecting:
             display->SetStatus(Lang::Strings::CONNECTING);
@@ -1045,9 +1050,7 @@ void Application::FetchWeatherTask() {
         ESP_LOGI(TAG, "Weather updated successfully");
         Schedule([this]() {
             if (device_state_ == kDeviceStateIdle) {
-                auto display = Board::GetInstance().GetDisplay();
-                auto status_text = GetIdleStatusText();
-                display->SetStatus(status_text.c_str());
+                UpdateIdleDisplay();
             }
         });
     }
@@ -1154,4 +1157,92 @@ std::string Application::FormatWeatherSummary(const WeatherInfo& info) const {
         snprintf(buffer, sizeof(buffer), "%d°C", rounded_temp);
     }
     return buffer;
+}
+
+void Application::UpdateIdleDisplay() {
+    auto& board = Board::GetInstance();
+    auto display = board.GetDisplay();
+
+    if (device_state_ != kDeviceStateIdle) {
+        display->HideIdleCard();
+        return;
+    }
+
+    IdleCardInfo card;
+    card.greeting = "Hello";
+
+    time_t now = time(nullptr);
+    struct tm tm_buf;
+    if (localtime_r(&now, &tm_buf) != nullptr && tm_buf.tm_year >= 2025 - 1900) {
+        char buffer[32];
+        strftime(buffer, sizeof(buffer), "%H:%M:%S", &tm_buf);
+        card.time_text = buffer;
+        strftime(buffer, sizeof(buffer), "%A", &tm_buf);
+        card.day_text = CapitalizeWords(buffer);
+        strftime(buffer, sizeof(buffer), "%m-%d", &tm_buf);
+        card.date_text = buffer;
+    } else {
+        card.time_text = "--:--:--";
+    }
+
+    WeatherInfo snapshot;
+    bool has_weather = false;
+    {
+        std::lock_guard<std::mutex> lock(weather_mutex_);
+        if (weather_available_) {
+            snapshot = weather_info_;
+            has_weather = true;
+        }
+    }
+
+    if (has_weather) {
+        card.city = snapshot.city.empty() ? kDefaultWeatherCity : CapitalizeWords(snapshot.city);
+        card.temperature_text = std::to_string(static_cast<int>(std::round(snapshot.temperature_c))) + "°C";
+        if (snapshot.humidity > 0) {
+            card.humidity_text = "Humidity " + std::to_string(snapshot.humidity) + "%";
+        }
+        if (!snapshot.description.empty()) {
+            card.description_text = "Weather " + snapshot.description;
+        } else {
+            card.description_text.clear();
+        }
+        card.icon = WeatherIconFromCode(snapshot.icon);
+    } else {
+        card.city = kDefaultWeatherCity;
+        card.temperature_text.clear();
+        card.humidity_text.clear();
+        card.description_text = Lang::Strings::STANDBY;
+        card.icon = FONT_AWESOME_CLOUD;
+    }
+
+    display->ShowIdleCard(card);
+}
+
+const char* Application::WeatherIconFromCode(const std::string& code) const {
+    if (code.size() < 2) {
+        return FONT_AWESOME_CLOUD;
+    }
+    std::string prefix = code.substr(0, 2);
+    if (prefix == "01") {
+        return FONT_AWESOME_SUN;
+    }
+    if (prefix == "02" || prefix == "03") {
+        return FONT_AWESOME_CLOUD_SUN;
+    }
+    if (prefix == "04") {
+        return FONT_AWESOME_CLOUD;
+    }
+    if (prefix == "09" || prefix == "10") {
+        return FONT_AWESOME_CLOUD_RAIN;
+    }
+    if (prefix == "11") {
+        return FONT_AWESOME_CLOUD_BOLT;
+    }
+    if (prefix == "13") {
+        return FONT_AWESOME_SNOWFLAKE;
+    }
+    if (prefix == "50") {
+        return FONT_AWESOME_SMOG;
+    }
+    return FONT_AWESOME_CLOUD;
 }

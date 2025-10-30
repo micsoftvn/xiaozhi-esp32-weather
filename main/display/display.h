@@ -16,6 +16,18 @@
 #include <string>
 #include <chrono>
 
+struct IdleCardInfo {
+    std::string city;
+    std::string greeting;
+    std::string time_text;
+    std::string day_text;
+    std::string date_text;
+    std::string temperature_text;
+    std::string humidity_text;
+    std::string description_text;
+    const char* icon = nullptr;
+};
+
 class Theme {
 public:
     Theme(const std::string& name) : name_(name) {}
@@ -43,6 +55,9 @@ public:
     virtual void ShowAudioPlayer(const std::string& title);
     virtual void UpdateAudioSpectrum(const std::array<uint8_t, 8>& bars);
     virtual void HideAudioPlayer();
+    virtual void ShowIdleCard(const IdleCardInfo& info);
+    virtual void UpdateIdleCardTime(const std::string& time_text);
+    virtual void HideIdleCard();
 
     inline int width() const { return width_; }
     inline int height() const { return height_; }
