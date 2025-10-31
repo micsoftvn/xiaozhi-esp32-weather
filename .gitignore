@@ -1,5 +1,6 @@
 tmp/
 components/
+backup_unused/
 managed_components/
 build/
 .vscode/
