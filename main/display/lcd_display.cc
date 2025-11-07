@@ -573,6 +573,8 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_flex_flow(idle_panel_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(idle_panel_, 0, 0);
     lv_obj_set_flex_align(idle_panel_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_scrollbar_mode(idle_panel_, LV_SCROLLBAR_MODE_OFF);  // avoid white scrollbar stripe on weather screen
+    lv_obj_clear_flag(idle_panel_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(idle_panel_, LV_OBJ_FLAG_HIDDEN);
 
     // Tạm thời xóa header chứa thành phố và lời chào
@@ -1039,6 +1041,8 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_flex_flow(idle_panel_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(idle_panel_, lvgl_theme->spacing(3), 0);
     lv_obj_set_flex_align(idle_panel_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_scrollbar_mode(idle_panel_, LV_SCROLLBAR_MODE_OFF);  // tránh thanh trắng sát mép
+    lv_obj_clear_flag(idle_panel_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(idle_panel_, LV_OBJ_FLAG_HIDDEN);
 
     // Xóa hoàn toàn header và các label
