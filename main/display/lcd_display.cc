@@ -582,6 +582,29 @@ void LcdDisplay::SetupUI() {
     lv_obj_clear_flag(idle_panel_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(idle_panel_, LV_OBJ_FLAG_HIDDEN);
 
+    lv_obj_t* header_box = lv_obj_create(idle_panel_);
+    lv_obj_set_width(header_box, LV_PCT(100));
+    lv_obj_set_style_bg_opa(header_box, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(header_box, 0, 0);
+    lv_obj_set_style_pad_all(header_box, 0, 0);
+    lv_obj_set_flex_flow(header_box, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(header_box, lvgl_theme->spacing(1), 0);
+    lv_obj_set_flex_align(header_box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    idle_city_label_ = lv_label_create(header_box);
+    lv_obj_set_width(idle_city_label_, LV_PCT(100));
+    lv_obj_set_style_text_font(idle_city_label_, text_font, 0);
+    lv_obj_set_style_text_color(idle_city_label_, lvgl_theme->text_color(), 0);
+    lv_obj_set_style_text_align(idle_city_label_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(idle_city_label_, "");
+
+    idle_time_label_ = lv_label_create(header_box);
+    lv_obj_set_width(idle_time_label_, LV_PCT(100));
+    lv_obj_set_style_text_font(idle_time_label_, text_font, 0);
+    lv_obj_set_style_text_color(idle_time_label_, lvgl_theme->text_color(), 0);
+    lv_obj_set_style_text_align(idle_time_label_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(idle_time_label_, "--:--:--");
+
     lv_obj_t* hero_row = lv_obj_create(idle_panel_);
     lv_obj_set_width(hero_row, LV_PCT(100));
     lv_obj_set_style_bg_opa(hero_row, LV_OPA_TRANSP, 0);
@@ -601,20 +624,6 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_style_pad_top(left_col, 0, 0);
     lv_obj_set_flex_align(left_col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
     lv_obj_set_flex_grow(left_col, 1);
-
-    idle_city_label_ = lv_label_create(left_col);
-    lv_obj_set_width(idle_city_label_, LV_PCT(100));
-    lv_obj_set_style_text_font(idle_city_label_, text_font, 0);
-    lv_obj_set_style_text_color(idle_city_label_, lvgl_theme->text_color(), 0);
-    lv_obj_set_style_text_align(idle_city_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(idle_city_label_, "");
-
-    idle_time_label_ = lv_label_create(left_col);
-    lv_obj_set_width(idle_time_label_, LV_PCT(100));
-    lv_obj_set_style_text_font(idle_time_label_, text_font, 0);
-    lv_obj_set_style_text_color(idle_time_label_, lvgl_theme->text_color(), 0);
-    lv_obj_set_style_text_align(idle_time_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(idle_time_label_, "--:--:--");
 
     lv_obj_t* hero_row_inner = lv_obj_create(left_col);
     lv_obj_set_width(hero_row_inner, LV_PCT(90));
@@ -1091,6 +1100,29 @@ void LcdDisplay::SetupUI() {
     idle_city_label_ = nullptr;
     idle_greeting_label_ = nullptr;
 
+    lv_obj_t* header_box_simple = lv_obj_create(idle_panel_);
+    lv_obj_set_width(header_box_simple, LV_PCT(100));
+    lv_obj_set_style_bg_opa(header_box_simple, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(header_box_simple, 0, 0);
+    lv_obj_set_style_pad_all(header_box_simple, 0, 0);
+    lv_obj_set_flex_flow(header_box_simple, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(header_box_simple, lvgl_theme->spacing(1), 0);
+    lv_obj_set_flex_align(header_box_simple, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    idle_city_label_ = lv_label_create(header_box_simple);
+    lv_obj_set_width(idle_city_label_, LV_PCT(100));
+    lv_obj_set_style_text_font(idle_city_label_, text_font, 0);
+    lv_obj_set_style_text_color(idle_city_label_, lvgl_theme->text_color(), 0);
+    lv_obj_set_style_text_align(idle_city_label_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(idle_city_label_, "");
+
+    idle_time_label_ = lv_label_create(header_box_simple);
+    lv_obj_set_width(idle_time_label_, LV_PCT(100));
+    lv_obj_set_style_text_font(idle_time_label_, text_font, 0);
+    lv_obj_set_style_text_color(idle_time_label_, lvgl_theme->text_color(), 0);
+    lv_obj_set_style_text_align(idle_time_label_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(idle_time_label_, "--:--:--");
+
     lv_obj_t* hero_row_simple = lv_obj_create(idle_panel_);
     lv_obj_set_width(hero_row_simple, LV_PCT(100));
     lv_obj_set_style_bg_opa(hero_row_simple, LV_OPA_TRANSP, 0);
@@ -1110,20 +1142,6 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_style_pad_top(left_col_simple, 0, 0);
     lv_obj_set_flex_align(left_col_simple, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
     lv_obj_set_flex_grow(left_col_simple, 1);
-
-    idle_city_label_ = lv_label_create(left_col_simple);
-    lv_obj_set_width(idle_city_label_, LV_PCT(100));
-    lv_obj_set_style_text_font(idle_city_label_, text_font, 0);
-    lv_obj_set_style_text_color(idle_city_label_, lvgl_theme->text_color(), 0);
-    lv_obj_set_style_text_align(idle_city_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(idle_city_label_, "");
-
-    idle_time_label_ = lv_label_create(left_col_simple);
-    lv_obj_set_width(idle_time_label_, LV_PCT(100));
-    lv_obj_set_style_text_font(idle_time_label_, text_font, 0);
-    lv_obj_set_style_text_color(idle_time_label_, lvgl_theme->text_color(), 0);
-    lv_obj_set_style_text_align(idle_time_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(idle_time_label_, "--:--:--");
 
     lv_obj_t* hero_inner_simple = lv_obj_create(left_col_simple);
     lv_obj_set_width(hero_inner_simple, LV_PCT(90));
