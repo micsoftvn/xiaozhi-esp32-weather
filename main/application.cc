@@ -1111,6 +1111,26 @@ bool Application::FetchWeatherData(WeatherInfo& info) {
             break;
         }
         cJSON* humidity = cJSON_GetObjectItem(main_obj, "humidity");
+        cJSON* feels_like = cJSON_GetObjectItem(main_obj, "feels_like");
+        cJSON* pressure = cJSON_GetObjectItem(main_obj, "pressure");
+        cJSON* temp_min = cJSON_GetObjectItem(main_obj, "temp_min");
+        cJSON* temp_max = cJSON_GetObjectItem(main_obj, "temp_max");
+
+        cJSON* wind_obj = cJSON_GetObjectItem(root, "wind");
+        cJSON* wind_speed = nullptr;
+        cJSON* wind_deg = nullptr;
+        if (cJSON_IsObject(wind_obj)) {
+            wind_speed = cJSON_GetObjectItem(wind_obj, "speed");
+            wind_deg = cJSON_GetObjectItem(wind_obj, "deg");
+        }
+
+        cJSON* sys_obj = cJSON_GetObjectItem(root, "sys");
+        cJSON* sunrise = nullptr;
+        cJSON* sunset = nullptr;
+        if (cJSON_IsObject(sys_obj)) {
+            sunrise = cJSON_GetObjectItem(sys_obj, "sunrise");
+            sunset = cJSON_GetObjectItem(sys_obj, "sunset");
+        }
 
         cJSON* weather_array = cJSON_GetObjectItem(root, "weather");
         if (!cJSON_IsArray(weather_array) || cJSON_GetArraySize(weather_array) == 0) {
@@ -1125,7 +1145,23 @@ bool Application::FetchWeatherData(WeatherInfo& info) {
 
         info.city = name->valuestring;
         info.temperature_c = static_cast<float>(temp->valuedouble);
+        info.feels_like_c = cJSON_IsNumber(feels_like) ? static_cast<float>(feels_like->valuedouble) : info.temperature_c;
         info.humidity = cJSON_IsNumber(humidity) ? humidity->valueint : 0;
+        info.wind_speed = wind_speed && cJSON_IsNumber(wind_speed) ? static_cast<float>(wind_speed->valuedouble) : 0.0f;
+        info.wind_deg = wind_deg && cJSON_IsNumber(wind_deg) ? wind_deg->valueint : -1;
+        info.pressure = pressure && cJSON_IsNumber(pressure) ? pressure->valueint : 0;
+        info.temp_min_c = temp_min && cJSON_IsNumber(temp_min) ? static_cast<float>(temp_min->valuedouble) : info.temperature_c;
+        info.temp_max_c = temp_max && cJSON_IsNumber(temp_max) ? static_cast<float>(temp_max->valuedouble) : info.temperature_c;
+        if (sunrise && cJSON_IsNumber(sunrise)) {
+            info.sunrise = std::chrono::system_clock::time_point(std::chrono::seconds(sunrise->valueint));
+        } else {
+            info.sunrise = {};
+        }
+        if (sunset && cJSON_IsNumber(sunset)) {
+            info.sunset = std::chrono::system_clock::time_point(std::chrono::seconds(sunset->valueint));
+        } else {
+            info.sunset = {};
+        }
         info.description = description && cJSON_IsString(description) ? CapitalizeWords(description->valuestring) : "";
         info.icon = icon && cJSON_IsString(icon) ? icon->valuestring : "";
         info.fetched_at = std::chrono::system_clock::now();
@@ -1179,7 +1215,7 @@ void Application::UpdateIdleDisplay() {
         card.time_text = buffer;
         strftime(buffer, sizeof(buffer), "%A", &tm_buf);
         card.day_text = CapitalizeWords(buffer);
-        strftime(buffer, sizeof(buffer), "%m-%d", &tm_buf);
+        strftime(buffer, sizeof(buffer), "%d-%m-%Y", &tm_buf);
         card.date_text = buffer;
     } else {
         card.time_text = "--:--:--";
@@ -1195,22 +1231,76 @@ void Application::UpdateIdleDisplay() {
         }
     }
 
+    auto format_time_hhmm = [](const std::chrono::system_clock::time_point& tp) -> std::string {
+        if (tp.time_since_epoch().count() <= 0) {
+            return "";
+        }
+        time_t t = std::chrono::system_clock::to_time_t(tp);
+        struct tm tm_buf;
+        if (localtime_r(&t, &tm_buf) == nullptr) {
+            return "";
+        }
+        char buffer[16];
+        strftime(buffer, sizeof(buffer), "%H:%M", &tm_buf);
+        return buffer;
+    };
+
+    auto format_wind_dir = [](int deg) -> std::string {
+        if (deg < 0) {
+            return "";
+        }
+        static const char* dirs[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+        int normalized = ((deg % 360) + 360) % 360;
+        int index = (normalized + 22) / 45;
+        index = index % 8;
+        return dirs[index];
+    };
+
     if (has_weather) {
         card.city = snapshot.city.empty() ? kDefaultWeatherCity : CapitalizeWords(snapshot.city);
         card.temperature_text = std::to_string(static_cast<int>(std::round(snapshot.temperature_c))) + "°C";
         if (snapshot.humidity > 0) {
-            card.humidity_text = "Humidity " + std::to_string(snapshot.humidity) + "%";
+            card.humidity_text = "Hum " + std::to_string(snapshot.humidity) + "%";
+        }
+        if (snapshot.feels_like_c != 0.0f) {
+            card.feels_like_text = "Feels " + std::to_string(static_cast<int>(std::round(snapshot.feels_like_c))) + "°C";
+        }
+        if (snapshot.wind_speed > 0.01f) {
+            std::string dir = format_wind_dir(snapshot.wind_deg);
+            char buffer[48];
+            if (!dir.empty()) {
+                snprintf(buffer, sizeof(buffer), "Wind %.1f m/s %s", snapshot.wind_speed, dir.c_str());
+            } else {
+                snprintf(buffer, sizeof(buffer), "Wind %.1f m/s", snapshot.wind_speed);
+            }
+            card.wind_text = buffer;
+        }
+        if (snapshot.pressure > 0) {
+            card.pressure_text = "Pres " + std::to_string(snapshot.pressure) + " hPa";
         }
         if (!snapshot.description.empty()) {
-            card.description_text = "Weather " + snapshot.description;
+            card.description_text = snapshot.description;
         } else {
             card.description_text.clear();
         }
+        card.uv_text = snapshot.uvi > 0.1f ? "UV " + std::to_string(static_cast<int>(std::round(snapshot.uvi))) : std::string();
+        card.sunrise_text = format_time_hhmm(snapshot.sunrise).empty() ? std::string() : "Rise " + format_time_hhmm(snapshot.sunrise);
+        card.sunset_text = format_time_hhmm(snapshot.sunset).empty() ? std::string() : "Set " + format_time_hhmm(snapshot.sunset);
+        int min_temp = static_cast<int>(std::round(snapshot.temp_min_c));
+        int max_temp = static_cast<int>(std::round(snapshot.temp_max_c));
+        card.ticker_text = "Lo " + std::to_string(min_temp) + "°C / Hi " + std::to_string(max_temp) + "°C";
         card.icon = WeatherIconFromCode(snapshot.icon);
     } else {
         card.city = kDefaultWeatherCity;
         card.temperature_text.clear();
         card.humidity_text.clear();
+        card.feels_like_text.clear();
+        card.wind_text.clear();
+        card.pressure_text.clear();
+        card.uv_text.clear();
+        card.sunrise_text.clear();
+        card.sunset_text.clear();
+        card.ticker_text = Lang::Strings::STANDBY;
         card.description_text = Lang::Strings::STANDBY;
         card.icon = FONT_AWESOME_CLOUD;
     }

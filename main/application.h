@@ -95,7 +95,16 @@ private:
         std::string description;
         std::string icon;
         float temperature_c = 0.0f;
+        float feels_like_c = 0.0f;
         int humidity = 0;
+        float wind_speed = 0.0f;
+        int wind_deg = -1;
+        int pressure = 0;
+        float uvi = 0.0f;
+        float temp_min_c = 0.0f;
+        float temp_max_c = 0.0f;
+        std::chrono::system_clock::time_point sunrise{};
+        std::chrono::system_clock::time_point sunset{};
         std::chrono::system_clock::time_point fetched_at{};
     };
 

@@ -47,6 +47,10 @@ protected:
     lv_obj_t* idle_icon_label_ = nullptr;
     lv_obj_t* idle_temp_label_ = nullptr;
     lv_obj_t* idle_humidity_label_ = nullptr;
+    lv_obj_t* idle_wind_label_ = nullptr;
+    static constexpr size_t kIdleFactCount = 4;
+    lv_obj_t* idle_fact_labels_[kIdleFactCount] = {nullptr, nullptr, nullptr, nullptr};
+    lv_obj_t* idle_ticker_label_ = nullptr;
     lv_obj_t* idle_day_label_ = nullptr;
     lv_obj_t* idle_date_label_ = nullptr;
     lv_obj_t* idle_desc_label_ = nullptr;
