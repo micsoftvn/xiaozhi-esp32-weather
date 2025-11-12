@@ -24,6 +24,13 @@ struct IdleCardInfo {
     std::string date_text;
     std::string temperature_text;
     std::string humidity_text;
+    std::string feels_like_text;
+    std::string wind_text;
+    std::string pressure_text;
+    std::string uv_text;
+    std::string sunrise_text;
+    std::string sunset_text;
+    std::string ticker_text;
     std::string description_text;
     const char* icon = nullptr;
 };
