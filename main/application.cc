@@ -1215,7 +1215,7 @@ void Application::UpdateIdleDisplay() {
         card.time_text = buffer;
         strftime(buffer, sizeof(buffer), "%A", &tm_buf);
         card.day_text = CapitalizeWords(buffer);
-        strftime(buffer, sizeof(buffer), "%m-%d", &tm_buf);
+        strftime(buffer, sizeof(buffer), "%d-%m-%Y", &tm_buf);
         card.date_text = buffer;
     } else {
         card.time_text = "--:--:--";
